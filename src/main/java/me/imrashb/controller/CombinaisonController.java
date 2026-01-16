@@ -1,8 +1,5 @@
 package me.imrashb.controller;
 
-import io.micrometer.core.instrument.Counter;
-import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.core.instrument.Timer;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -39,20 +36,8 @@ public class CombinaisonController {
     private static final int MAX_IDS = 64;
     private final CombinaisonService service;
 
-    // Prometheus metrics
-    private final Timer apiImagesGenerationTimer;
-    private final Timer imageGenerationTimer;
-    private final MeterRegistry registry;
-
-    public CombinaisonController(CombinaisonService service,
-                                 Counter apiImagesGeneratedCounter,
-                                 Timer apiImagesGenerationTimer,
-                                 Timer imageGenerationTimer,
-                                 MeterRegistry registry) {
+    public CombinaisonController(CombinaisonService service) {
         this.service = service;
-        this.apiImagesGenerationTimer = apiImagesGenerationTimer;
-        this.imageGenerationTimer = imageGenerationTimer;
-        this.registry = registry;
     }
 
     @GetMapping("")
@@ -128,32 +113,21 @@ public class CombinaisonController {
             throw new IllegalArgumentException("Theme parameter exceeds maximum length");
         }
 
-        Timer.Sample sample = Timer.start(registry);
         try {
             HoraireImageMakerTheme imageTheme = HoraireImageMaker.getThemeFromId(theme);
-            String themeName = theme != null ? theme : "default";
 
             CombinaisonHoraire comb = service.getCombinaisonFromEncodedId(id);
-            Future<Image> future = new HoraireImageMaker(comb, imageTheme, imageGenerationTimer, registry).drawHoraire();
+            Future<Image> future = new HoraireImageMaker(comb, imageTheme).drawHoraire();
             Image img = future.get();
             ByteArrayOutputStream os = new ByteArrayOutputStream();
             ImageIO.write((RenderedImage) img, "jpeg", os);
 
-            // Record metrics
-            registry.counter("api_images_generated_total",
-                    "theme", themeName
-            ).increment();
-
-            sample.stop(apiImagesGenerationTimer);
             return os.toByteArray();
         } catch (ExecutionException | InterruptedException | IOException e) {
-            sample.stop(apiImagesGenerationTimer);
             throw e;
         } catch (RuntimeException e) {
-            sample.stop(apiImagesGenerationTimer);
             throw e;
         } catch (Exception e) {
-            sample.stop(apiImagesGenerationTimer);
             throw new RuntimeException(e);
         }
     }
