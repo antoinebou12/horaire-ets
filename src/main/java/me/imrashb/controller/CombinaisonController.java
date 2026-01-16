@@ -4,9 +4,14 @@ import me.imrashb.domain.ParametresCombinaison;
 import me.imrashb.domain.combinaison.CombinaisonHoraire;
 import me.imrashb.domain.combinaison.comparator.CombinaisonHoraireComparator;
 import me.imrashb.service.CombinaisonService;
+import me.imrashb.service.IcsGeneratorService;
 import me.imrashb.utils.HoraireImageMaker;
 import me.imrashb.utils.HoraireImageMakerTheme;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import javax.imageio.ImageIO;
@@ -15,6 +20,7 @@ import java.awt.image.RenderedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -27,9 +33,11 @@ public class CombinaisonController {
 
     private static final int MAX_IDS = 64;
     private final CombinaisonService service;
+    private final IcsGeneratorService icsGeneratorService;
 
-    public CombinaisonController(CombinaisonService service) {
+    public CombinaisonController(CombinaisonService service, IcsGeneratorService icsGeneratorService) {
         this.service = service;
+        this.icsGeneratorService = icsGeneratorService;
     }
 
     @GetMapping("")
@@ -91,6 +99,35 @@ public class CombinaisonController {
         }
 
         return combinaisons;
+    }
+
+    @GetMapping(value = "{id}/ics", produces = "text/calendar")
+    public ResponseEntity<String> getCombinaisonIcs(
+            @PathVariable String id,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+
+        try {
+            CombinaisonHoraire combinaison = service.getCombinaisonFromEncodedId(id);
+            
+            // Validate dates if both provided
+            if (startDate != null && endDate != null && endDate.isBefore(startDate)) {
+                return ResponseEntity.badRequest().body("End date must be after start date");
+            }
+
+            String icsContent = icsGeneratorService.generateIcsFromCombinaison(combinaison, startDate, endDate);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.parseMediaType("text/calendar; charset=utf-8"));
+            headers.setContentDispositionFormData("attachment", "schedule.ics");
+
+            return ResponseEntity.ok()
+                    .headers(headers)
+                    .body(icsContent);
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        }
     }
 
 }
