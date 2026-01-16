@@ -1,0 +1,41 @@
+# Exclude build artifacts
+target/
+*.class
+*.jar
+*.war
+
+# Exclude IDE files
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# Exclude version control
+.git/
+.gitignore
+
+# Exclude documentation and scripts not needed in build
+README.md
+docs/
+scripts/
+
+# Exclude deployment configs (not needed for build)
+deployment/
+docker-compose.yml
+.github/
+
+# Exclude logs and temp files
+*.log
+*.tmp
+
+# Exclude environment files
+.env
+.env.*
+
+# Exclude test files (if not needed in production build)
+# Uncomment if you want to skip tests entirely in Docker
+# src/test/
+
+# Exclude other unnecessary files
+*.md

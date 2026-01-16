@@ -18,6 +18,7 @@ public class CoursController {
     }
 
     @GetMapping("")
+    @Operation(summary = "Get all courses", description = "Retrieve a list of all courses, optionally filtered by programme")
     public List<CoursWithoutGroupes> getCours(@RequestParam(required = false) List<Programme> programmes) {
         List<CoursWithoutGroupes> cours = service.getCours(programmes);
         if(cours == null) throw new CoursNotInitializedException();
