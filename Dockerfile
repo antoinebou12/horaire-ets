@@ -17,12 +17,11 @@ COPY src ./src
 # Tests can be run separately in CI/CD pipeline
 RUN --mount=type=cache,target=/root/.m2 mvn package -DskipTests -B
 
-FROM amazoncorretto:11-alpine-jdk AS runtime
+FROM amazoncorretto:11 AS runtime
 
-# Install fonts in a single layer
-RUN apk --no-cache add msttcorefonts-installer fontconfig && \
-    update-ms-fonts && \
-    fc-cache -f
+# Install fonts
+RUN yum install -y fontconfig && \
+    yum clean all
 
 ARG JAR_FILE=horaire-ets.jar
 

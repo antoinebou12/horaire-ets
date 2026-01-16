@@ -3,6 +3,13 @@ package me.imrashb.controller;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import me.imrashb.domain.ParametresCombinaison;
 import me.imrashb.domain.combinaison.CombinaisonHoraire;
 import me.imrashb.domain.combinaison.comparator.CombinaisonHoraireComparator;
@@ -26,6 +33,7 @@ import java.util.concurrent.Future;
 
 @RestController
 @RequestMapping("/combinaisons")
+@Tag(name = "Schedule Combinations", description = "API for generating and retrieving schedule combinations")
 public class CombinaisonController {
 
     private static final int MAX_IDS = 64;
@@ -48,7 +56,14 @@ public class CombinaisonController {
     }
 
     @GetMapping("")
-    public List<CombinaisonHoraire> getCombinaisonsHoraire(ParametresCombinaison parametres) throws RuntimeException {
+    @Operation(
+            summary = "Get schedule combinations",
+            description = "Generate and retrieve schedule combinations based on provided parameters. " +
+                    "Supports filtering by courses, programmes, and custom sorting criteria."
+    )
+    public List<CombinaisonHoraire> getCombinaisonsHoraire(
+            @Parameter(description = "Combination parameters (courses, programmes, sorting, etc.)")
+            ParametresCombinaison parametres) throws RuntimeException {
 
         CombinaisonHoraireComparator comparator = null;
 
@@ -74,12 +89,31 @@ public class CombinaisonController {
     }
 
     @GetMapping("sort")
+    @Operation(
+            summary = "Get available sorters",
+            description = "Retrieve a list of all available sorting comparators for schedule combinations."
+    )
     public CombinaisonHoraireComparator.Comparator[] getCombinaisonHoraireSorters() {
         return service.getAvailableCombinaisonHoraireComparators();
     }
 
     @GetMapping(value = "{id}", produces = MediaType.IMAGE_JPEG_VALUE)
-    public @ResponseBody byte[] getCombinaisonImage(@PathVariable String id, @RequestParam(required = false) String theme) throws ExecutionException, InterruptedException, IOException {
+    @Operation(
+            summary = "Get schedule combination image",
+            description = "Generate and retrieve a JPEG image of a schedule combination. " +
+                    "The combination is identified by an encoded ID. Optional theme parameter for customization."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Image generated successfully",
+                    content = @Content(mediaType = MediaType.IMAGE_JPEG_VALUE)),
+            @ApiResponse(responseCode = "400", description = "Invalid ID or theme parameter"),
+            @ApiResponse(responseCode = "500", description = "Error generating image")
+    })
+    public @ResponseBody byte[] getCombinaisonImage(
+            @Parameter(description = "Encoded combination ID", required = true, example = "abc123")
+            @PathVariable String id,
+            @Parameter(description = "Optional theme identifier for image styling", example = "dark")
+            @RequestParam(required = false) String theme) throws ExecutionException, InterruptedException, IOException {
 
         // Security: Validate ID input
         if (id == null || id.trim().isEmpty()) {
@@ -125,7 +159,14 @@ public class CombinaisonController {
     }
 
     @GetMapping(value = "id")
-    public List<CombinaisonHoraire> getCombinaisonsFromEncodedId(@RequestParam String[] ids) throws ExecutionException, InterruptedException, IOException {
+    @Operation(
+            summary = "Get combinations by encoded IDs",
+            description = "Retrieve multiple schedule combinations by their encoded IDs. " +
+                    "Maximum " + MAX_IDS + " IDs allowed per request."
+    )
+    public List<CombinaisonHoraire> getCombinaisonsFromEncodedId(
+            @Parameter(description = "Array of encoded combination IDs (max " + MAX_IDS + ")", required = true, example = "[\"abc123\", \"def456\"]")
+            @RequestParam String[] ids) throws ExecutionException, InterruptedException, IOException {
 
         // Security: Enforce maximum number of IDs to prevent DoS attacks
         if (ids.length > MAX_IDS) {
