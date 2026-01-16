@@ -33,7 +33,6 @@ public class RootController {
         Map<String, String> endpoints = new HashMap<>();
         endpoints.put("courses", "/cours");
         endpoints.put("search", "/cours/search?q=<query>&limit=20");
-        endpoints.put("autocomplete", "/cours/autocomplete?q=<query>&limit=10");
         endpoints.put("sessions", "/sessions");
         endpoints.put("combinations", "/combinaisons");
         endpoints.put("statistics", "/statistics");
