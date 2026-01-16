@@ -1,6 +1,10 @@
 package me.imrashb.discord;
 
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+import lombok.extern.slf4j.Slf4j;
 import me.imrashb.discord.commands.*;
 import me.imrashb.discord.events.controller.InteractionHandlerController;
 import me.imrashb.discord.events.handler.CommandAutoCompleteInteractionEventHandler;
@@ -17,16 +21,44 @@ import net.dv8tion.jda.api.utils.MemberCachePolicy;
 import net.dv8tion.jda.api.utils.cache.CacheFlag;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicLong;
 
+@Slf4j
 public class Bot {
 
     private final HorairETSService mediator;
     private final Set<DiscordSlashCommand> commands;
     private JDA jda;
 
-    Bot(String token, HorairETSService mediator) throws InterruptedException {
+    // Prometheus metrics
+    private final AtomicLong discordBotStatus;
+    private final Counter discordBotReconnectsCounter;
+    private final Counter discordInteractionsCounter;
+    private final Counter discordInteractionsErrorsCounter;
+    private final Timer discordInteractionProcessingTimer;
+    private final Counter discordRoutineExecutionsCounter;
+    private final Timer discordRoutineExecutionTimer;
+    private final MeterRegistry registry;
+
+    Bot(String token, HorairETSService mediator,
+        AtomicLong discordBotStatus,
+        Counter discordBotReconnectsCounter,
+        Counter discordInteractionsCounter,
+        Counter discordInteractionsErrorsCounter,
+        Timer discordInteractionProcessingTimer,
+        Counter discordRoutineExecutionsCounter,
+        Timer discordRoutineExecutionTimer,
+        MeterRegistry registry) throws InterruptedException {
         this.mediator = mediator;
         this.commands = new HashSet<>();
+        this.discordBotStatus = discordBotStatus;
+        this.discordBotReconnectsCounter = discordBotReconnectsCounter;
+        this.discordInteractionsCounter = discordInteractionsCounter;
+        this.discordInteractionsErrorsCounter = discordInteractionsErrorsCounter;
+        this.discordInteractionProcessingTimer = discordInteractionProcessingTimer;
+        this.discordRoutineExecutionsCounter = discordRoutineExecutionsCounter;
+        this.discordRoutineExecutionTimer = discordRoutineExecutionTimer;
+        this.registry = registry;
 
         JDABuilder builder = JDABuilder.createLight(token);
 
@@ -63,22 +95,47 @@ public class Bot {
 
         try {
             this.jda = jdaBuilder.build().awaitReady();
+            // Set bot status to online
+            discordBotStatus.set(1);
+            log.info("Discord bot initialized successfully");
         } catch(Exception e) {
-            System.err.println("Failed to initialize Discord bot. Reason: "+e.getMessage());
-            e.printStackTrace();
+            // Security: Use proper logging instead of printStackTrace
+            log.error("Failed to initialize Discord bot. Reason: {}", e.getMessage(), e);
+            discordBotStatus.set(0);
             return;
         }
 
         // Presence Routine
-        new DiscordPresenceRoutine(this.jda).startRoutine();
+        new DiscordPresenceRoutine(this.jda, discordRoutineExecutionsCounter, discordRoutineExecutionTimer, registry).startRoutine();
 
         this.subscribeCommands();
         this.subscribeListeners();
+
+        // Monitor reconnection events
+        this.jda.addEventListener(new net.dv8tion.jda.api.hooks.ListenerAdapter() {
+            @Override
+            public void onStatusChange(net.dv8tion.jda.api.events.StatusChangeEvent event) {
+                JDA.Status newStatus = event.getJDA().getStatus();
+                JDA.Status oldStatus = event.getOldStatus();
+                if (newStatus == net.dv8tion.jda.api.JDA.Status.CONNECTED && 
+                    oldStatus != net.dv8tion.jda.api.JDA.Status.CONNECTED) {
+                    discordBotReconnectsCounter.increment();
+                    discordBotStatus.set(1);
+                } else if (newStatus != net.dv8tion.jda.api.JDA.Status.CONNECTED) {
+                    discordBotStatus.set(0);
+                }
+            }
+        });
     }
 
     private void subscribeListeners() {
 
-        InteractionHandlerController interactionHandlerController = new InteractionHandlerController(jda);
+        InteractionHandlerController interactionHandlerController = new InteractionHandlerController(
+                jda,
+                discordInteractionsCounter,
+                discordInteractionsErrorsCounter,
+                discordInteractionProcessingTimer,
+                registry);
         interactionHandlerController.addInteractionHandler(new SlashCommandInteractionEventHandler(this.commands));
         interactionHandlerController.addInteractionHandler(new CommandAutoCompleteInteractionEventHandler(this.commands));
         interactionHandlerController.addInteractionHandler(new ComponentControlledEmbedHandler());

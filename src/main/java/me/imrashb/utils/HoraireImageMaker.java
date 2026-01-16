@@ -1,5 +1,7 @@
 package me.imrashb.utils;
 
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import me.imrashb.domain.Activite;
 import me.imrashb.domain.Groupe;
 import me.imrashb.domain.HoraireActivite;
@@ -17,6 +19,10 @@ import java.util.concurrent.*;
 import java.util.stream.*;
 
 public class HoraireImageMaker {
+
+    // Prometheus metrics (optional - can be null)
+    private final Timer imageGenerationTimer;
+    private final MeterRegistry registry;
 
     public static final HoraireImageMakerTheme LIGHT_THEME = new HoraireImageMakerTheme(
             "lumiere", "Thème lumière", Color.white, Color.gray, Color.gray, Color.lightGray, Color.white, Color.black, Color.gray, Color.gray);
@@ -91,12 +97,22 @@ public class HoraireImageMaker {
     private final HoraireImageMakerTheme theme;
 
     public HoraireImageMaker(CombinaisonHoraire horaire) {
-        this(horaire, LIGHT_THEME);
+        this(horaire, LIGHT_THEME, null, null);
     }
 
     public HoraireImageMaker(CombinaisonHoraire horaire, HoraireImageMakerTheme theme) {
+        this(horaire, theme, null, null);
+    }
+
+    public HoraireImageMaker(CombinaisonHoraire horaire, HoraireImageMakerTheme theme, Timer imageGenerationTimer) {
+        this(horaire, theme, imageGenerationTimer, null);
+    }
+
+    public HoraireImageMaker(CombinaisonHoraire horaire, HoraireImageMakerTheme theme, Timer imageGenerationTimer, MeterRegistry registry) {
         this.horaire = horaire;
         this.theme = theme;
+        this.imageGenerationTimer = imageGenerationTimer;
+        this.registry = registry;
     }
 
     public static HoraireImageMakerTheme getThemeFromId(String themeId) {
@@ -118,25 +134,36 @@ public class HoraireImageMaker {
         ExecutorService executor = Executors.newSingleThreadExecutor();
 
         return executor.submit(() -> {
-            AffineTransform at = new AffineTransform();
-            double scale = ((double) width) / (double) WIDTH;
-            at.setToScale(scale, scale);
+            Timer.Sample sample = null;
+            if (imageGenerationTimer != null && registry != null) {
+                sample = Timer.start(registry);
+            }
+
+            try {
+                AffineTransform at = new AffineTransform();
+                double scale = ((double) width) / (double) WIDTH;
+                at.setToScale(scale, scale);
 
 
-            BufferedImage bufferedImage = new BufferedImage((int) (WIDTH * scale), (int) (HEIGHT * scale), BufferedImage.TYPE_INT_RGB);
-            Graphics2D g2d = bufferedImage.createGraphics();
-            g2d.setTransform(at);
-            g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-            g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+                BufferedImage bufferedImage = new BufferedImage((int) (WIDTH * scale), (int) (HEIGHT * scale), BufferedImage.TYPE_INT_RGB);
+                Graphics2D g2d = bufferedImage.createGraphics();
+                g2d.setTransform(at);
+                g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+                g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
 
-            this.drawBackground(g2d);
-            this.drawJours(g2d);
-            this.drawHeures(g2d);
-            this.drawCours(g2d);
+                this.drawBackground(g2d);
+                this.drawJours(g2d);
+                this.drawHeures(g2d);
+                this.drawCours(g2d);
 
-            g2d.dispose();
-            return bufferedImage;
+                g2d.dispose();
+                return bufferedImage;
+            } finally {
+                if (sample != null && imageGenerationTimer != null) {
+                    sample.stop(imageGenerationTimer);
+                }
+            }
         });
 
     }

@@ -11,13 +11,18 @@ Pour le moment, le déploiement sur une machine distante est utilisé pour sauve
 
 - Se connecter en SSH à la machine distante
 - Installer Docker et se login avec `docker login`
-- Copier les 3 fichiers suivants dans un dossier:
+- Copier les fichiers suivants dans un dossier:
   - `docker-compose.yml`
-  - `.env-example`
   - `Caddyfile`
-- Renommer le fichier `.env-example` en `.env` et remplir les variables d'environnement. Il est important de changer les variables **DB_USERNAME** et **DB_PASSWORD** avant de démarrer le Docker Compose pour la première fois, car il est plus difficile de changer le username et le password de la base de donnée après cela.
-- Modifier le fichier `Caddyfile` pour mettre le nom de domaine à la place de **localhost**
-- Démarrer les conteneurs avec la commande `docker compose --env-file .env up -d`
+  - `.env` (créer avec les variables d'environnement)
+- Remplir les variables d'environnement dans `.env`:
+  - `DB_USERNAME` - Nom d'utilisateur PostgreSQL
+  - `DB_PASSWORD` - Mot de passe PostgreSQL
+  - `DB_NAME` - Nom de la base de données
+  - `DB_URL` - URL de connexion (ex: `jdbc:postgresql://postgres:5432/${DB_NAME}`)
+  - `DISCORD_TOKEN` - Token du bot Discord
+- (Optionnel) Modifier le fichier `Caddyfile` pour mettre votre nom de domaine à la place de `localhost`
+- Démarrer les conteneurs avec: `docker compose up -d`
 
 ## Configurer les secrets GitHub Actions
 

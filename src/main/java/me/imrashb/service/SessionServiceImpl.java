@@ -1,5 +1,7 @@
 package me.imrashb.service;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import me.imrashb.domain.*;
@@ -9,6 +11,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicLong;
 
 @Service
 @EnableScheduling
@@ -22,6 +25,17 @@ public class SessionServiceImpl implements SessionService {
     private Integer derniereSession = null;
     @Getter
     private boolean ready = false;
+
+    // Prometheus metrics
+    private final Counter coursesQueriedCounter;
+    private final AtomicLong sessionsAvailableCount;
+    private final MeterRegistry registry;
+
+    public SessionServiceImpl(Counter coursesQueriedCounter, AtomicLong sessionsAvailableCount, MeterRegistry registry) {
+        this.coursesQueriedCounter = coursesQueriedCounter;
+        this.sessionsAvailableCount = sessionsAvailableCount;
+        this.registry = registry;
+    }
 
     @Override
     public void addSession(Session session, List<Cours> cours, List<Programme> programmes) {
@@ -52,7 +66,10 @@ public class SessionServiceImpl implements SessionService {
     @Override
     public Set<String> getSessions() {
         validateReady();
-        return coursParSessions.keySet();
+        Set<String> sessions = coursParSessions.keySet();
+        // Update gauge with current session count
+        sessionsAvailableCount.set(sessions.size());
+        return sessions;
     }
 
     @Override
@@ -64,7 +81,14 @@ public class SessionServiceImpl implements SessionService {
     @Override
     public List<Cours> getListeCours(String sessionId) {
         validateReady();
-        return coursParSessions.get(sessionId);
+        List<Cours> cours = coursParSessions.get(sessionId);
+        // Record metrics
+        if (cours != null) {
+            registry.counter("courses_queried_total",
+                    "session", sessionId != null ? sessionId : "unknown"
+            ).increment();
+        }
+        return cours;
     }
 
     @Override
@@ -106,6 +130,10 @@ public class SessionServiceImpl implements SessionService {
     public void setReady(boolean ready) {
         boolean tmp = this.ready;
         this.ready = ready;
+        // Update sessions count gauge when ready status changes
+        if (ready) {
+            sessionsAvailableCount.set(coursParSessions.size());
+        }
         //Fire events
         if (tmp != ready) {
             fireReadyListeners();

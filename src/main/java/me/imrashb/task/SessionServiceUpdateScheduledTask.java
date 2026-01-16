@@ -1,5 +1,8 @@
 package me.imrashb.task;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import lombok.extern.slf4j.Slf4j;
 import me.imrashb.domain.*;
 import me.imrashb.parser.CoursParser;
@@ -17,6 +20,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicLong;
 
 @Configuration
 @EnableScheduling
@@ -27,9 +31,27 @@ public class SessionServiceUpdateScheduledTask {
 
     private final ScrapedCoursDataRepository repository;
 
-    public SessionServiceUpdateScheduledTask(HorairETSService horairETSService, ScrapedCoursDataRepository repository) {
+    // Prometheus metrics
+    private final Counter scheduledTaskCourseUpdateExecutionsCounter;
+    private final Timer scheduledTaskCourseUpdateTimer;
+    private final Counter scheduledTaskCourseUpdateErrorsCounter;
+    private final AtomicLong scheduledTaskCourseUpdateLastSuccessTimestamp;
+    private final MeterRegistry registry;
+
+    public SessionServiceUpdateScheduledTask(HorairETSService horairETSService,
+                                            ScrapedCoursDataRepository repository,
+                                            Counter scheduledTaskCourseUpdateExecutionsCounter,
+                                            Timer scheduledTaskCourseUpdateTimer,
+                                            Counter scheduledTaskCourseUpdateErrorsCounter,
+                                            AtomicLong scheduledTaskCourseUpdateLastSuccessTimestamp,
+                                            MeterRegistry registry) {
         this.horairETSService = horairETSService;
         this.repository = repository;
+        this.scheduledTaskCourseUpdateExecutionsCounter = scheduledTaskCourseUpdateExecutionsCounter;
+        this.scheduledTaskCourseUpdateTimer = scheduledTaskCourseUpdateTimer;
+        this.scheduledTaskCourseUpdateErrorsCounter = scheduledTaskCourseUpdateErrorsCounter;
+        this.scheduledTaskCourseUpdateLastSuccessTimestamp = scheduledTaskCourseUpdateLastSuccessTimestamp;
+        this.registry = registry;
     }
 
     private static int getNextSessionId(int sessionId) {
@@ -66,9 +88,13 @@ public class SessionServiceUpdateScheduledTask {
     //Update les horaires a chaque heure
     @Scheduled(fixedDelay = 3600000)
     public void updateCours() throws IOException {
-        log.info("method: updateCours() : Début de la mise à jour des cours");
-        int currentYear = Calendar.getInstance().get(Calendar.YEAR);
-        int startYear = 2023;
+        scheduledTaskCourseUpdateExecutionsCounter.increment();
+        Timer.Sample sample = Timer.start(registry);
+
+        try {
+            log.info("method: updateCours() : Début de la mise à jour des cours");
+            int currentYear = Calendar.getInstance().get(Calendar.YEAR);
+            int startYear = 2023;
 
         int sessionId = startYear * 10; // 2020 * 10 -> 20200, les sessions sont: 20201 (Hiver), 20202 (Été), 20203 (Automne)
 
@@ -138,7 +164,21 @@ public class SessionServiceUpdateScheduledTask {
         horairETSService.getSessionService().setReady(true);
         scrapeMissingCoursData(missingAdditionalCoursData);
         log.info("method: updateCours() : Fin de la tâche de la mise à jour des cours.");
+
+        // Record success metrics
+        sample.stop(scheduledTaskCourseUpdateTimer);
+        scheduledTaskCourseUpdateLastSuccessTimestamp.set(System.currentTimeMillis() / 1000); // Unix timestamp in seconds
+
         System.gc();
+        } catch (Exception e) {
+            // Record error metrics
+            registry.counter("scheduled_task_course_update_errors_total",
+                    "error_type", e.getClass().getSimpleName()
+            ).increment();
+            sample.stop(scheduledTaskCourseUpdateTimer);
+            log.error("Error in scheduled course update task", e);
+            throw e;
+        }
     }
 
 }

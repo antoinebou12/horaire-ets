@@ -1,5 +1,8 @@
 package me.imrashb.discord.routines;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import lombok.NonNull;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.Activity;
@@ -16,7 +19,17 @@ public class DiscordPresenceRoutine extends PeriodicRoutine {
     private int currentSupplier = 0;
 
     public DiscordPresenceRoutine(@NonNull final JDA jda) {
-        super(Duration.ofSeconds(60));
+        super(Duration.ofSeconds(60), null, null, null, "discord_presence");
+        this.jda = jda;
+        this.suppliers = new ArrayList<>();
+        this.initSuppliers();
+    }
+
+    public DiscordPresenceRoutine(@NonNull final JDA jda,
+                                  Counter discordRoutineExecutionsCounter,
+                                  Timer discordRoutineExecutionTimer,
+                                  MeterRegistry registry) {
+        super(Duration.ofSeconds(60), discordRoutineExecutionsCounter, discordRoutineExecutionTimer, registry, "discord_presence");
         this.jda = jda;
         this.suppliers = new ArrayList<>();
         this.initSuppliers();
@@ -43,7 +56,7 @@ public class DiscordPresenceRoutine extends PeriodicRoutine {
     }
 
     @Override
-    public void run() {
+    protected void executeRoutine() {
         if (currentSupplier >= suppliers.size()) {
             currentSupplier = 0;
         }
